@@ -34,15 +34,16 @@ class Player {
       board.oSocketId[this.iUserId] = this.socket.id;
       await redis.client.json.set(`${iBoardId}:aviatorBoard`, '$.oSocketId', board.oSocketId);
 
+      let player = {
+        iUserId: this.iUserId,
+        eState: 'waiting',
+        nBetAmount: 0,
+        cashOutAt: 0,
+        bPlacedBetNextRound: false,
+        bIsCashOut: false,
+      };
       if (!isReconnect) {
-        await redis.client.json.set(`${iBoardId}:${this.iUserId}:player`, '$', {
-          iUserId: this.iUserId,
-          eState: 'waiting',
-          nBetAmount: 0,
-          cashOutAt: 0,
-          bPlacedBetNextRound: false,
-          bIsCashOut: false,
-        });
+        await redis.client.json.set(`${iBoardId}:${this.iUserId}:player`, '$', player);
       } else {
         const player = await redis.client.json.get(`${iBoardId}:${this.iUserId}:player`);
         if (!player) return this.logError(messages.not_found('player'), callback);
@@ -50,7 +51,9 @@ class Player {
         this.socket.emit(iBoardId, { message: 'Reconnected to board', board, player });
       }
 
-      callback({ message: 'Joined board' });
+      const getBetTtl = await redis.client.ttl(_.getSchedulerKey('assignBetTimeout', iBoardId, ''));
+
+      callback({ message: 'Joined board', player, getBetTtl });
     } catch (error) {
       log.red('Error joining board:', error);
       return this.logError(error, callback);

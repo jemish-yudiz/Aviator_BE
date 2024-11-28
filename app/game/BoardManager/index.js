@@ -51,7 +51,16 @@ class BoardManager {
 
       let nMultiplier = (board.nAdminProfit * 0.9) / nMaxBetAmount;
       if (nMultiplier <= 1 || nMaxBetAmount == 0) {
-        nMultiplier = (Math.floor(Math.random() * 10) / 10 + 1.0).toFixed(1);
+        const nRandom = Math.random();
+        if (nRandom <= 0.8) {
+          nMultiplier = +(Math.random() * 29 + 1).toFixed(1);
+        } else if (nRandom > 0.8 && nRandom <= 0.9) {
+          nMultiplier = +(Math.random() * 59 + 30).toFixed(1);
+        } else {
+          nMultiplier = +(Math.random() * 99 + 60).toFixed(1);
+        }
+
+        // nMultiplier = (Math.floor(Math.random() * 10) / 10 + 1.0).toFixed(1);
       }
 
       await redis.client.json.set(`${iBoardId}:aviatorBoard`, '$.eState', 'playing');

@@ -75,7 +75,7 @@ class PlayerListener {
       await user.save();
 
       callback({ message: messages.success(`Bet amount set to ${nBetAmount}`) });
-      this.boardEmit('resBet', { iUserId: this.iUserId, nBetAmount }, this.iBoardId);
+      this.boardEmit('resBet', { iUserId: this.iUserId, nBetAmount, eState: bPlacedBetNextRound ? 'waiting' : 'playing' }, this.iBoardId);
       if (!bPlacedBetNextRound) await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.nAdminProfit', board.nAdminProfit + nBetAmount);
     } catch (error) {
       return this.logError(error, callback);
@@ -121,7 +121,7 @@ class PlayerListener {
       await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.nAdminProfit', board.nAdminProfit - participantData.nBetAmount * nCashOutAtValue);
       await User.updateOne({ _id: this.iUserId }, { $inc: { nChips: +participantData.nBetAmount * nCashOutAtValue } });
       await redis.client.json.set(`${this.iBoardId}:${this.iUserId}:player`, '$.bIsCashOut', true);
-      callback({ message: messages.success(`Cash out at ${nCashOutAtValue}`) });
+      this.playerEmit('resCashOut', { iUserId: this.iUserId, nCashOutAtValue }, this.iBoardId, this.iUserId);
       this.boardEmit('resCashOut', { iUserId: this.iUserId, nCashOutAtValue }, this.iBoardId);
 
       // check if total cash out amount is greater than 90% of admin profit
@@ -139,12 +139,16 @@ class PlayerListener {
       if (bIsEveryOneCashOut) {
         const nNewMultiplier = +(nCashOutAtValue + Math.random() * (500 - nCashOutAtValue) + nCashOutAtValue).toFixed(1);
         await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.nMultiplyMoneyValue', nNewMultiplier);
-        await redis.client.pSetEx(_.getSchedulerKey('assignGamePlayTimeout', this.iBoardId, ''), this.calculateGamePlayTime(nNewMultiplier), 'assignGamePlayTimeout');
+        const nGamePlayTime = this.calculateGamePlayTime(nNewMultiplier);
+        this.boardEmit('resCrashAviatorValue', { nMultiplyMoneyValue: nNewMultiplier, nGamePlayTime }, this.iBoardId);
+        await redis.client.pSetEx(_.getSchedulerKey('assignGamePlayTimeout', this.iBoardId, ''), nGamePlayTime, 'assignGamePlayTimeout');
       }
 
       if (nTotalCashOutAmount >= board.nAdminProfit * 0.9) {
+        // const nNewMultiplier = +(nCashOutAtValue + Math.random() * 0.5 + 0.5).toFixed(1);
+        this.boardEmit('resCrashAviator', { nMultiplyMoneyValue: 1.0, nGamePlayTime: 0 }, this.iBoardId);
+        // await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.nMultiplyMoneyValue', nNewMultiplier);
         await redis.client.del(_.getSchedulerKey('assignGamePlayTimeout', this.iBoardId, ''));
-        this.boardEmit('resCrashAviator', { nMultiplyMoneyValue: (nCashOutAtValue + Math.random() * 0.5 + 0.5).toFixed(1) }, this.iBoardId);
 
         await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.eState', 'waiting');
         await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.nMultiplyMoneyValue', 0);
