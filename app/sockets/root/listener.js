@@ -121,7 +121,6 @@ class PlayerListener {
       await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.nAdminProfit', board.nAdminProfit - participantData.nBetAmount * nCashOutAtValue);
       await User.updateOne({ _id: this.iUserId }, { $inc: { nChips: +participantData.nBetAmount * nCashOutAtValue } });
       await redis.client.json.set(`${this.iBoardId}:${this.iUserId}:player`, '$.bIsCashOut', true);
-      this.playerEmit('resCashOut', { iUserId: this.iUserId, nCashOutAtValue }, this.iBoardId, this.iUserId);
       this.boardEmit('resCashOut', { iUserId: this.iUserId, nCashOutAtValue }, this.iBoardId);
 
       // check if total cash out amount is greater than 90% of admin profit

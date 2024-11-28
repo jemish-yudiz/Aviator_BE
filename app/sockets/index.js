@@ -15,7 +15,8 @@ class Socket {
       connectTimeout: 45000, // - ms to wait before rejecting handshake
       allowEIO3: true,
       cors: {
-        origin: '*:*',
+        // origin: '*:*',
+        origin: '*',
         methods: ['GET', 'POST'],
         credentials: false,
       },

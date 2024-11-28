@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aviator Game</title>
+    <link rel="stylesheet" href="index.css" />
+  </head>
+  <body>
+    <div id="game-container">
+      <header>
+        <h1>Aviator Game</h1>
+      </header>
+      <main>
+        <div id="game-board">
+          <div id="recent-bets">
+            <!-- Will be populated dynamically -->
+          </div>
+
+          <div id="board-info">
+            <p id="player-status">Player Status: <span id="player-status-text">Waiting</span></p>
+            <div id="timer"></div>
+            <p id="multiplier-text">Multiplier: <span id="multiplier">1.00x</span></p>
+          </div>
+
+          <div id="graph-area">
+            <canvas id="game-canvas"></canvas>
+          </div>
+
+          <div id="controls">
+            <button id="join-board">Join Board</button>
+            <input type="number" id="bet-amount" placeholder="Enter Bet Amount" />
+            <button id="place-bet">Place Bet</button>
+            <button id="cash-out">Cash Out</button>
+          </div>
+        </div>
+        <aside id="leaderboard">
+          <h2>Leaderboard</h2>
+          <ul id="leaderboard-list">
+            <!-- Dynamic leaderboard entries -->
+          </ul>
+        </aside>
+      </main>
+      <footer>
+        <div id="messages"></div>
+      </footer>
+    </div>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="index.js"></script>
+  </body>
+</html>
