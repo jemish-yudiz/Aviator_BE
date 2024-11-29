@@ -102,6 +102,7 @@ class GameSocket {
 
   handleBetTimeout(oData) {
     this.clearGameState();
+    this.game.curvePoints = [];
     this.startBetTimer(oData.timeoutDuration - 1);
   }
 
@@ -164,31 +165,41 @@ class GameSocket {
   }
 
   startCrashInterval(increment, nMultiplyMoneyValue, currentMultiplier, multiplier) {
+    this.curvePoints = [];
+
     window.crashInterval = setInterval(() => {
-      if (currentMultiplier < nMultiplyMoneyValue) {
+      if (increment && currentMultiplier < nMultiplyMoneyValue) {
         currentMultiplier += increment;
         multiplier.textContent = `${currentMultiplier.toFixed(1)}x`;
         this.game.updateMultiplier(currentMultiplier);
       } else {
         clearInterval(window.crashInterval);
-        multiplier.textContent = '1.0x';
-        this.game.stop();
-        this.game.updateMultiplier(1.0);
+        this.game.stop(); // This will trigger the red animation
+        setTimeout(() => {
+          multiplier.textContent = '1.0x';
+          this.game.updateMultiplier(1.0);
+          this.game.curvePoints = [];
+        }, 1000);
       }
     }, 1000);
   }
 
   startCrashAviatorInterval(increment, nMultiplyMoneyValue, currentMultiplier, multiplier) {
+    this.curvePoints = [];
+
     window.crashAviatorInterval = setInterval(() => {
-      if (currentMultiplier < nMultiplyMoneyValue) {
+      if (increment && currentMultiplier < nMultiplyMoneyValue) {
         currentMultiplier += increment;
         multiplier.textContent = `${currentMultiplier.toFixed(1)}x`;
         this.game.updateMultiplier(currentMultiplier);
       } else {
         clearInterval(window.crashAviatorInterval);
-        multiplier.textContent = '1.0x';
-        this.game.stop();
-        this.game.updateMultiplier(1.0);
+        this.game.stop(); // This will trigger the red animation
+        setTimeout(() => {
+          multiplier.textContent = '1.0x';
+          this.game.updateMultiplier(1.0);
+          this.game.curvePoints = [];
+        }, 1000);
       }
     }, 1000);
   }
@@ -222,6 +233,8 @@ class AviatorGame {
     this.isFlying = false;
     this.curvePoints = [];
     this.maxPoints = 100;
+    this.isCrashing = false;
+    this.crashColor = 'rgba(240, 185, 11, 0.15)'; // Default color
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -249,8 +262,16 @@ class AviatorGame {
 
   calculateCurvePoint() {
     const padding = 50;
-    const x = padding + ((this.canvas.width - padding * 2) * (this.multiplier - 1)) / 1.5;
-    const y = this.canvas.height - ((this.multiplier - 1) * (this.canvas.height - padding)) / 1.2;
+    const maxMultiplier = Math.max(6, Math.ceil(this.multiplier) + 2);
+
+    // Create exponential curve using power function
+    const exponent = 2.5; // Increased for more dramatic curve
+    const normalizedX = Math.pow((this.multiplier - 1) / maxMultiplier, 1 / exponent);
+
+    // Scale the points to fit the canvas
+    const x = padding + normalizedX * (this.canvas.width - padding * 2);
+    const y = this.canvas.height - ((this.multiplier - 1) / maxMultiplier) * (this.canvas.height - padding);
+
     return { x, y };
   }
 
@@ -260,14 +281,12 @@ class AviatorGame {
     const newPoint = this.calculateCurvePoint();
     this.curvePoints.push(newPoint);
 
-    // if (this.curvePoints.length > this.maxPoints) {
-    //   this.curvePoints.shift();
-    // }
-
-    this.ctx.fillStyle = 'rgba(240, 185, 11, 0.15)';
+    // Draw fill
+    this.ctx.fillStyle = this.isCrashing ? 'rgba(255, 0, 0, 0.3)' : 'rgba(240, 185, 11, 0.3)';
     this.ctx.beginPath();
     this.ctx.moveTo(50, this.canvas.height);
 
+    // Draw fill path
     this.curvePoints.forEach((point, index) => {
       if (index === 0) {
         this.ctx.moveTo(point.x, point.y);
@@ -278,13 +297,15 @@ class AviatorGame {
 
     this.ctx.lineTo(newPoint.x, this.canvas.height);
     this.ctx.lineTo(50, this.canvas.height);
+    this.ctx.closePath();
     this.ctx.fill();
 
-    this.ctx.strokeStyle = 'rgba(240, 185, 11, 0.15)';
-    this.ctx.lineWidth = 2;
-    this.ctx.shadowColor = '#ffffff';
-    this.ctx.shadowBlur = 2;
+    // Draw line
+    this.ctx.strokeStyle = this.isCrashing ? '#ff0000' : '#f0b90b';
+    this.ctx.lineWidth = 3;
     this.ctx.beginPath();
+
+    // Draw curve line
     this.curvePoints.forEach((point, index) => {
       if (index === 0) {
         this.ctx.moveTo(point.x, point.y);
@@ -293,7 +314,6 @@ class AviatorGame {
       }
     });
     this.ctx.stroke();
-    this.ctx.shadowBlur = 0;
   }
 
   drawGrid() {
@@ -302,17 +322,30 @@ class AviatorGame {
     this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
     this.ctx.lineWidth = 1;
 
-    const multipliers = [1, 1.2, 1.3, 1.4, 1.5, 1.7, 2];
-    multipliers.forEach(mult => {
-      const y = this.canvas.height - ((mult - 1) * (this.canvas.height - 100)) / 1.2;
-      this.ctx.beginPath();
-      this.ctx.moveTo(0, y);
-      this.ctx.lineTo(this.canvas.width, y);
-      this.ctx.stroke();
+    const padding = 50; // Add padding definition
+    const maxMultiplier = Math.max(6, Math.ceil(this.multiplier) + 2);
+    const gridLines = [];
 
-      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-      this.ctx.font = '11px Arial';
-      this.ctx.fillText(`${mult}x`, 5, y - 3);
+    // Generate exponentially spaced grid lines
+    let currentValue = 1;
+    while (currentValue <= maxMultiplier) {
+      gridLines.push(currentValue);
+      currentValue = currentValue < 2 ? 2 : Math.ceil(currentValue * 1.5);
+    }
+
+    gridLines.forEach(mult => {
+      const y = this.canvas.height - ((mult - 1) / maxMultiplier) * (this.canvas.height - padding);
+
+      if (y > 0 && y < this.canvas.height) {
+        this.ctx.beginPath();
+        this.ctx.moveTo(padding, y);
+        this.ctx.lineTo(this.canvas.width, y);
+        this.ctx.stroke();
+
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        this.ctx.font = '11px Arial';
+        this.ctx.fillText(`${mult.toFixed(1)}x`, 5, y - 3);
+      }
     });
   }
 
@@ -321,12 +354,11 @@ class AviatorGame {
 
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
+    // Draw grid behind the curve
     this.drawGrid();
 
+    // Draw curve with proper z-index
     this.drawCurve();
-
-    // const currentPoint = this.calculateCurvePoint();
-    // this.drawPlane(currentPoint.x, currentPoint.y);
 
     requestAnimationFrame(() => this.animate());
   }
@@ -338,8 +370,69 @@ class AviatorGame {
   }
 
   stop() {
-    this.isFlying = false;
-    this.curvePoints = [];
+    this.isCrashing = true;
+
+    // Continue the normal animation but with red color
+    const crashDuration = 800;
+    const startTime = Date.now();
+
+    const crashAnimation = () => {
+      const elapsed = Date.now() - startTime;
+
+      if (elapsed < crashDuration) {
+        // Keep the animation going but in red
+        if (this.ctx) {
+          this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+          this.drawGrid();
+
+          // Draw the curve in red
+          this.ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+          this.ctx.strokeStyle = '#ff0000';
+          this.ctx.lineWidth = 3;
+
+          // Draw the curve
+          if (this.curvePoints.length > 0) {
+            // Fill
+            this.ctx.beginPath();
+            this.ctx.moveTo(50, this.canvas.height);
+            this.curvePoints.forEach((point, index) => {
+              if (index === 0) {
+                this.ctx.moveTo(point.x, point.y);
+              } else {
+                this.ctx.lineTo(point.x, point.y);
+              }
+            });
+            this.ctx.lineTo(this.curvePoints[this.curvePoints.length - 1].x, this.canvas.height);
+            this.ctx.lineTo(50, this.canvas.height);
+            this.ctx.closePath();
+            this.ctx.fill();
+
+            // Line
+            this.ctx.beginPath();
+            this.curvePoints.forEach((point, index) => {
+              if (index === 0) {
+                this.ctx.moveTo(point.x, point.y);
+              } else {
+                this.ctx.lineTo(point.x, point.y);
+              }
+            });
+            this.ctx.stroke();
+          }
+        }
+        requestAnimationFrame(crashAnimation);
+      } else {
+        // Reset after animation
+        this.isFlying = false;
+        this.isCrashing = false;
+        this.curvePoints = [];
+        if (this.ctx) {
+          this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+          this.drawGrid();
+        }
+      }
+    };
+
+    crashAnimation();
   }
 
   updateMultiplier(newMultiplier) {
