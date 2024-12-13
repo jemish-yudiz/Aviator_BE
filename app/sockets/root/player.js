@@ -34,10 +34,13 @@ class Player {
       board.oSocketId[this.iUserId] = this.socket.id;
       await redis.client.json.set(`${iBoardId}:aviatorBoard`, '$.oSocketId', board.oSocketId);
 
+      const user = await User.findOne({ _id: this.iUserId }, { nChips: 1 });
+
       let player = {
         iUserId: this.iUserId,
         eState: 'waiting',
         nBetAmount: 0,
+        nChips: user.nChips,
         cashOutAt: 0,
         bPlacedBetNextRound: false,
         bIsCashOut: false,

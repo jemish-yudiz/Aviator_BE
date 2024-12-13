@@ -76,6 +76,7 @@ class PlayerListener {
 
       callback({ message: messages.success(`Bet amount set to ${nBetAmount}`) });
       this.boardEmit('resBet', { iUserId: this.iUserId, nBetAmount, eState: bPlacedBetNextRound ? 'waiting' : 'playing' }, this.iBoardId);
+      this.playerEmit('resPlayerData', { nChips: user.nChips }, this.iBoardId, this.iUserId);
       if (!bPlacedBetNextRound) await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.nAdminProfit', board.nAdminProfit + nBetAmount);
     } catch (error) {
       return this.logError(error, callback);
@@ -119,9 +120,10 @@ class PlayerListener {
       const _lock = await redlock.lock.acquire([`lock:${this.iBoardId}:aviatorBoard`], 1000);
 
       await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.nAdminProfit', board.nAdminProfit - participantData.nBetAmount * nCashOutAtValue);
-      await User.updateOne({ _id: this.iUserId }, { $inc: { nChips: +participantData.nBetAmount * nCashOutAtValue } });
+      const user = await User.findOneAndUpdate({ _id: this.iUserId }, { $inc: { nChips: +participantData.nBetAmount * nCashOutAtValue } }, { new: true });
       await redis.client.json.set(`${this.iBoardId}:${this.iUserId}:player`, '$.bIsCashOut', true);
       this.boardEmit('resCashOut', { iUserId: this.iUserId, nCashOutAtValue }, this.iBoardId);
+      this.playerEmit('resPlayerData', { nChips: user.nChips }, this.iBoardId, this.iUserId);
 
       // check if total cash out amount is greater than 90% of admin profit
       const participants = await redis.client.keys(`${this.iBoardId}:*:player`);
@@ -139,14 +141,14 @@ class PlayerListener {
         const nNewMultiplier = +(nCashOutAtValue + Math.random() * (500 - nCashOutAtValue) + nCashOutAtValue).toFixed(1);
         await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.nMultiplyMoneyValue', nNewMultiplier);
         const nGamePlayTime = this.calculateGamePlayTime(nNewMultiplier);
-        this.boardEmit('resCrashAviatorValue', { nMultiplyMoneyValue: nNewMultiplier, nGamePlayTime }, this.iBoardId);
+        this.boardEmit('resUpdatedCrashValue', { nMultiplyMoneyValue: nNewMultiplier, nGamePlayTime }, this.iBoardId);
         await redis.client.pSetEx(_.getSchedulerKey('assignGamePlayTimeout', this.iBoardId, ''), nGamePlayTime, 'assignGamePlayTimeout');
       }
 
       if (nTotalCashOutAmount >= board.nAdminProfit * 0.9) {
-        // const nNewMultiplier = +(nCashOutAtValue + Math.random() * 0.5 + 0.5).toFixed(1);
-        this.boardEmit('resCrashAviator', { nMultiplyMoneyValue: 1.0, nGamePlayTime: 0 }, this.iBoardId);
-        // await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.nMultiplyMoneyValue', nNewMultiplier);
+        const nNewMultiplier = +(nCashOutAtValue + Math.random() * 0.5 + 0.5).toFixed(1);
+        const ramainingTime = this.calculateGamePlayTime(nNewMultiplier - +board.nMultiplyMoneyValue);
+        this.boardEmit('resUpdatedCrashValue', { nMultiplyMoneyValue: +nNewMultiplier, nGamePlayTime: ramainingTime }, this.iBoardId);
         await redis.client.del(_.getSchedulerKey('assignGamePlayTimeout', this.iBoardId, ''));
 
         await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.eState', 'waiting');
@@ -160,7 +162,8 @@ class PlayerListener {
           }
 
           if (!player.bIsCashOut && +player.nBetAmount != 0) {
-            await User.updateOne({ _id: player.iUserId }, { $inc: { nChips: +player.nBetAmount * nCashOutAtValue } });
+            const user = await User.findByIdAndUpdate(player.iUserId, { $inc: { nChips: +player.nBetAmount * nCashOutAtValue } }, { new: true });
+            this.playerEmit('resPlayerData', { nChips: user.nChips }, this.iBoardId, player.iUserId);
           }
 
           if (player.bPlacedBetNextRound) {
@@ -178,6 +181,7 @@ class PlayerListener {
 
         await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.nAdminProfit', 0);
 
+        await new Promise(resolve => setTimeout(resolve, ramainingTime));
         await redis.client.pSetEx(_.getSchedulerKey('assignBetTimeout', this.iBoardId, ''), 1000 * 15, 'assignBetTimeout');
         this.boardEmit('assignBetTimeout', { timeoutDuration: 15 }, this.iBoardId);
       }
@@ -187,54 +191,6 @@ class PlayerListener {
       return this.logError(error, callback);
     }
   }
-
-  /*
-  async crashAviators(oData, callback) {
-    try {
-      const { nCrashMultiplier } = oData;
-      const board = await redis.client.json.get(`${this.iBoardId}:aviatorBoard`);
-      if (!board) return this.logError(messages.not_found('board'), callback);
-
-      if (board.nMultiplyMoneyValue < nCrashMultiplier) {
-        return this.logError(messages.invalid_req('crash multiplier'), callback);
-      }
-
-      // await redis.client.del(_.getSchedulerKey('assignGamePlayTimeout', this.iBoardId, ''));
-      this.boardEmit('resCrashAviator', { nMultiplyMoneyValue: nCrashMultiplier }, this.iBoardId);
-      await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.eState', 'waiting');
-      await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.nMultiplyMoneyValue', 0);
-      await redis.client.json.set(`${this.iBoardId}:aviatorBoard`, '$.nAdminProfit', 0);
-
-      const participants = await redis.client.keys(`${this.iBoardId}:*:player`);
-      for (const participant of participants) {
-        const player = await redis.client.json.get(participant);
-        if (!player) {
-          console.error(`Participant data not found or is not a JSON object for key: ${participant}`);
-          continue;
-        }
-
-        if (!player.bIsCashOut && +player.nBetAmount != 0) {
-          await User.updateOne({ _id: player.iUserId }, { $inc: { nChips: +player.nBetAmount * nCrashMultiplier } });
-        }
-
-        if (player.bPlacedBetNextRound) {
-          await redis.client.json.set(participant, '$.eState', 'playing');
-        } else {
-          await redis.client.json.set(participant, '$.eState', 'waiting');
-          await redis.client.json.set(participant, '$.nBetAmount', 0);
-        }
-        await redis.client.json.set(participant, '$.cashOutAt', 0);
-        await redis.client.json.set(participant, '$.bPlacedBetNextRound', false);
-        await redis.client.json.set(participant, '$.bIsCashOut', false);
-      }
-
-      await redis.client.pSetEx(_.getSchedulerKey('assignBetTimeout', this.iBoardId, ''), 1000 * 15, 'assignBetTimeout');
-      this.boardEmit('assignBetTimeout', { timeoutDuration: 15 }, this.iBoardId);
-    } catch (error) {
-      return this.logError(error, callback);
-    }
-  }
-  */
 
   async leave(oData, callback) {
     try {

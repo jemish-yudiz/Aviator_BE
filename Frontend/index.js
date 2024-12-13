@@ -2,7 +2,7 @@ class GameSocket {
   constructor() {
     this.socket = io('http://localhost:3040', {
       auth: {
-        authorization: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2NzQ3MDk4OWM2MTYyYWM4NDQwNTRiOWEiLCJpYXQiOjE3MzI3MDg3NDV9.YvsQ1eV84jPuCTFYmnA691VVaUPSAK5L6o9_ghk9npM',
+        authorization: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2NzQ1NTE3N2FhNTVjMTAxNGRiZGY1ZmYiLCJpYXQiOjE3MzI1OTYxMzh9.7cW1EyqZDzcMOCpzWFhPPR03RvZcLonBxNXVoxt_588',
       },
     });
     this.iBoardId = '6744369aac1a00c98ab71c6e';
@@ -82,10 +82,10 @@ class GameSocket {
       case 'assignBetTimeout':
         this.handleBetTimeout(data.oData);
         break;
-      case 'resAviatorCrashValue':
+      case 'resInitialCrashValue':
         this.handleCrashValue(data.oData, this.currentMultiplier, multiplier);
         break;
-      case 'resCrashAviator':
+      case 'resUpdatedCrashValue':
         this.handleCrashAviator(data.oData, this.currentMultiplier, multiplier);
         break;
       case 'resBet':
@@ -93,6 +93,9 @@ class GameSocket {
         break;
       case 'resCashOut':
         this.handleCashOutResponse(data.oData, playerStatusText);
+        break;
+      case 'resPlayerData':
+        this.handlePlayerData(data.oData, playerStatusText);
         break;
       default:
         console.log('unknown event', data.sEventName);
@@ -133,6 +136,10 @@ class GameSocket {
   handleCashOutResponse(oData, playerStatusText) {
     this.updateLeaderboard(`Cash Out At: ${oData.nCashOutAtValue}`);
     playerStatusText.textContent = 'Waiting';
+  }
+
+  handlePlayerData(oData, playerStatusText) {
+    this.displayMessage(JSON.stringify(oData));
   }
 
   clearGameState() {

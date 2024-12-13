@@ -17,9 +17,9 @@ class BoardManager {
     this.scheduleTask(sTaskName, iBoardId, iUserId, callback);
   }
 
-  async scheduleTask(sTaskName, iBoardId, iUserId, callback) {
+  async scheduleTask(sTaskName, iBoardId, callback) {
     const board = await redis.client.json.get(`${iBoardId}:aviatorBoard`);
-    if (!board) return console.log('board not found');
+    if (!board) return console.log('scheduleTask board not found');
 
     switch (sTaskName) {
       case 'assignBetTimeout':
@@ -51,16 +51,16 @@ class BoardManager {
 
       let nMultiplier = (board.nAdminProfit * 0.9) / nMaxBetAmount;
       if (nMultiplier <= 1 || nMaxBetAmount == 0) {
-        const nRandom = Math.random();
-        if (nRandom <= 0.9) {
-          nMultiplier = +(Math.random() * 20 + 1).toFixed(1);
-        } else if (nRandom > 0.9 && nRandom <= 0.95) {
-          nMultiplier = +(Math.random() * 50 + 20).toFixed(1);
-        } else {
-          nMultiplier = +(Math.random() * 90 + 50).toFixed(1);
-        }
+        //   const nRandom = Math.random();
+        //   if (nRandom <= 0.9) {
+        //     nMultiplier = +(Math.random() * 10 + 1).toFixed(1);
+        //   } else if (nRandom > 0.9 && nRandom <= 0.95) {
+        //     nMultiplier = +(Math.random() * 30 + 10).toFixed(1);
+        //   } else {
+        //     nMultiplier = +(Math.random() * 60 + 30).toFixed(1);
+        //   }
 
-        // nMultiplier = (Math.floor(Math.random() * 10) / 10 + 1.0).toFixed(1);
+        nMultiplier = (Math.floor(Math.random() * 10) / 10 + 1.2).toFixed(1);
       }
 
       await redis.client.json.set(`${iBoardId}:aviatorBoard`, '$.eState', 'playing');
@@ -69,7 +69,13 @@ class BoardManager {
       const gamePlayTime = this.calculateGamePlayTime(+nMultiplier);
       await redis.client.pSetEx(_.getSchedulerKey('assignGamePlayTimeout', iBoardId, ''), gamePlayTime, 'assignGamePlayTimeout');
 
-      this.boardEmit('resAviatorCrashValue', { nMultiplyMoneyValue: +nMultiplier, nGamePlayTime: gamePlayTime }, iBoardId);
+      this.boardEmit('resInitialCrashValue', { nMultiplyMoneyValue: +nMultiplier, nGamePlayTime: gamePlayTime }, iBoardId);
+
+      const allPlayers = await redis.client.keys(`${iBoardId}:*:player`);
+      for (const player of allPlayers) {
+        const playerData = await redis.client.json.get(player);
+        this.playerEmit('resPlayerData', playerData, iBoardId, playerData.iUserId);
+      }
     } catch (error) {
       console.log(`Error in setAssignBetTimeout: ${error}`);
     }
@@ -80,7 +86,6 @@ class BoardManager {
       const board = await redis.client.json.get(`${iBoardId}:aviatorBoard`);
       if (!board) return console.log('board not found');
 
-      this.boardEmit('resCrashAviator', { nMultiplyMoneyValue: +board.nMultiplyMoneyValue }, iBoardId);
       await redis.client.json.set(`${iBoardId}:aviatorBoard`, '$.eState', 'waiting');
       await redis.client.json.set(`${iBoardId}:aviatorBoard`, '$.nMultiplyMoneyValue', 0);
       await redis.client.json.set(`${iBoardId}:aviatorBoard`, '$.nAdminProfit', 0);
@@ -94,7 +99,8 @@ class BoardManager {
         }
 
         if (!player.bIsCashOut && +player.nBetAmount != 0) {
-          await User.updateOne({ _id: player.iUserId }, { $inc: { nChips: +player.nBetAmount * +board.nMultiplyMoneyValue } });
+          const user = await User.findByIdAndUpdate(player.iUserId, { $inc: { nChips: +player.nBetAmount * +board.nMultiplyMoneyValue } }, { new: true });
+          this.playerEmit('resPlayerData', { nChips: user.nChips }, iBoardId, player.iUserId);
         }
 
         if (player.bPlacedBetNextRound) {
